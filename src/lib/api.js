@@ -54,10 +54,34 @@ export async function procesarQR(itemsAcumulados, productosActuales) {
     const productoActual = productosActuales.find(
       p => p.nombre.toLowerCase().trim() === item.nombre.toLowerCase().trim()
     );
+
     if (productoActual) {
+      // Existe → actualizar stock
       await actualizarStock(productoActual.id, item.cantidad);
     } else {
-      console.warn(`No encontrado: "${item.nombre}"`);
+      // No existe → buscar o crear categoría y crear producto
+      console.log(`Creando producto nuevo: "${item.nombre}"`);
+
+      // Buscar categoría o crearla
+      let categoriaRows = await sql`
+        SELECT id FROM categorias WHERE LOWER(nombre) = LOWER(${item.categoria})
+      `;
+
+      let categoriaId;
+      if (categoriaRows.length > 0) {
+        categoriaId = categoriaRows[0].id;
+      } else {
+        const nuevaCat = await sql`
+          INSERT INTO categorias (nombre) VALUES (${item.categoria}) RETURNING id
+        `;
+        categoriaId = nuevaCat[0].id;
+      }
+
+      // Crear producto
+      await sql`
+        INSERT INTO productos (nombre, categoria_id, stock)
+        VALUES (${item.nombre}, ${categoriaId}, ${item.cantidad})
+      `;
     }
   }
 }
