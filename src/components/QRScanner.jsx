@@ -1,37 +1,29 @@
 import { useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
 export default function QRScanner({ onScan }) {
-  const scannerRef = useRef(null);
+  const videoRef = useRef(null);
+  const readerRef = useRef(null);
 
   useEffect(() => {
-    const scanner = new Html5Qrcode('qr-reader');
-    scannerRef.current = scanner;
+    const reader = new BrowserMultiFormatReader();
+    readerRef.current = reader;
 
-    scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      (decodedText) => {
-        try {
-          const data = JSON.parse(decodedText);
-          scanner.stop();
-          onScan(data);
-        } catch (e) {
-          console.error('QR no válido:', e);
-        }
-      },
-      () => {}
-    );
+    reader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+      if (result) {
+        onScan(result.getText());
+      }
+    });
 
     return () => {
-      scanner.stop().catch(() => {});
+      reader.reset();
     };
   }, []);
 
   return (
     <div>
-      <div id="qr-reader" style={{ width: '300px', margin: '0 auto' }} />
-      <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
+      <video ref={videoRef} style={{ width: '100%', borderRadius: '8px' }} />
+      <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginTop: '8px' }}>
         Apunta la cámara al código QR
       </p>
     </div>
