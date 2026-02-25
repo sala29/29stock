@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 
-export default function QRScanner({ onScan }) {
+export default function QRScanner({ onScan, esperando }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
   const [scanned, setScanned] = useState(null);
   const [error, setError] = useState(null);
+  const [qrIncorrecto, setQrIncorrecto] = useState(null);
 
   useEffect(() => {
     const reader = new BrowserMultiFormatReader();
     readerRef.current = reader;
 
-    reader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+    reader.decodeFromVideoDevice(null, videoRef.current, (result) => {
       if (result) {
         const texto = result.getText();
-        console.log('QR leído:', texto);
         parsear(texto);
       }
     });
@@ -25,6 +25,9 @@ export default function QRScanner({ onScan }) {
   }, []);
 
   function parsear(texto) {
+    // Si ya hay algo en pantalla, ignorar nuevas lecturas
+    if (scanned || error || qrIncorrecto) return;
+
     try {
       const partes = texto.split('|');
       const cabecera = partes[0];
@@ -37,6 +40,12 @@ export default function QRScanner({ onScan }) {
 
       const actual = parseInt(match[1]);
       const total = parseInt(match[2]);
+
+      // Validar que es el QR esperado
+      if (actual !== esperando) {
+        setQrIncorrecto({ actual, total, esperando });
+        return;
+      }
 
       const items = partes
         .slice(1)
@@ -53,7 +62,7 @@ export default function QRScanner({ onScan }) {
 
       setScanned({ actual, total, items, raw: texto });
     } catch (e) {
-      setError(`QR no reconocido. Contenido: "${texto}"`);
+      setError(`QR no válido: "${texto}"`);
     }
   }
 
@@ -62,39 +71,55 @@ export default function QRScanner({ onScan }) {
     setScanned(null);
   }
 
-  function rechazar() {
+  function volver() {
     setScanned(null);
     setError(null);
+    setQrIncorrecto(null);
   }
 
   return (
     <div>
       <video
         ref={videoRef}
-        style={{ width: '100%', borderRadius: '8px', display: scanned || error ? 'none' : 'block' }}
+        style={{ width: '100%', borderRadius: '8px', display: scanned || error || qrIncorrecto ? 'none' : 'block' }}
       />
 
-      {!scanned && !error && (
+      {!scanned && !error && !qrIncorrecto && (
         <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginTop: '8px' }}>
-          Apunta la cámara al código QR
+          Apunta la cámara al QR <strong>{esperando}</strong>
         </p>
       )}
 
-      {error && (
-        <div style={{ background: '#fff0f0', border: '1px solid #ffcccc', borderRadius: '10px', padding: '16px', marginTop: '12px' }}>
-          <p style={{ color: '#cc0000', fontWeight: 600, marginBottom: '8px' }}>⚠️ QR no válido</p>
-          <p style={{ fontSize: '13px', color: '#666', wordBreak: 'break-all' }}>{error}</p>
-          <button onClick={rechazar} style={btnStyle('#666')}>Volver a escanear</button>
+      {/* QR incorrecto */}
+      {qrIncorrecto && (
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '20px', marginTop: '12px', textAlign: 'center' }}>
+          <p style={{ fontSize: '32px', marginBottom: '8px' }}>⚠️</p>
+          <p style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>QR incorrecto</p>
+          <p style={{ color: '#666', fontSize: '14px', marginBottom: '16px' }}>
+            Has escaneado el QR <strong>{qrIncorrecto.actual}/{qrIncorrecto.total}</strong> pero se esperaba el <strong>{qrIncorrecto.esperando}/{qrIncorrecto.total}</strong>
+          </p>
+          <button onClick={volver} style={btnStyle('#f97316')}>🔄 Volver a escanear</button>
         </div>
       )}
 
+      {/* Error formato */}
+      {error && (
+        <div style={{ background: '#fff0f0', border: '1px solid #ffcccc', borderRadius: '10px', padding: '20px', marginTop: '12px', textAlign: 'center' }}>
+          <p style={{ fontSize: '32px', marginBottom: '8px' }}>❌</p>
+          <p style={{ fontWeight: 700, marginBottom: '8px' }}>QR no válido</p>
+          <p style={{ fontSize: '13px', color: '#666', wordBreak: 'break-all', marginBottom: '16px' }}>{error}</p>
+          <button onClick={volver} style={btnStyle('#ef4444')}>🔄 Volver a escanear</button>
+        </div>
+      )}
+
+      {/* QR correcto - preview */}
       {scanned && (
         <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '16px', marginTop: '12px' }}>
           <p style={{ fontWeight: 700, marginBottom: '4px' }}>
             📦 QR {scanned.actual} de {scanned.total}
           </p>
           <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
-            {scanned.items.length} productos encontrados
+            {scanned.items.length} productos
           </p>
           <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '14px' }}>
             {scanned.items.map((item, i) => (
@@ -113,7 +138,7 @@ export default function QRScanner({ onScan }) {
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={aceptar} style={btnStyle('#22c55e')}>✅ Aceptar</button>
-            <button onClick={rechazar} style={btnStyle('#ef4444')}>❌ Rechazar</button>
+            <button onClick={volver} style={btnStyle('#ef4444')}>❌ Rechazar</button>
           </div>
         </div>
       )}
