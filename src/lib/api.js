@@ -50,38 +50,28 @@ export function parsearQR(texto) {
 
 // Procesar todos los items acumulados de todos los QRs
 export async function procesarQR(itemsAcumulados, productosActuales) {
+  // 1. Borrar todos los productos actuales
+  await sql`DELETE FROM productos`;
+
+  // 2. Insertar los del QR (crear categorías si no existen)
   for (const item of itemsAcumulados) {
-    const productoActual = productosActuales.find(
-      p => p.nombre.toLowerCase().trim() === item.nombre.toLowerCase().trim()
-    );
+    let categoriaRows = await sql`
+      SELECT id FROM categorias WHERE LOWER(nombre) = LOWER(${item.categoria})
+    `;
 
-    if (productoActual) {
-      // Existe → actualizar stock
-      await actualizarStock(productoActual.id, item.cantidad);
+    let categoriaId;
+    if (categoriaRows.length > 0) {
+      categoriaId = categoriaRows[0].id;
     } else {
-      // No existe → buscar o crear categoría y crear producto
-      console.log(`Creando producto nuevo: "${item.nombre}"`);
-
-      // Buscar categoría o crearla
-      let categoriaRows = await sql`
-        SELECT id FROM categorias WHERE LOWER(nombre) = LOWER(${item.categoria})
+      const nuevaCat = await sql`
+        INSERT INTO categorias (nombre) VALUES (${item.categoria}) RETURNING id
       `;
-
-      let categoriaId;
-      if (categoriaRows.length > 0) {
-        categoriaId = categoriaRows[0].id;
-      } else {
-        const nuevaCat = await sql`
-          INSERT INTO categorias (nombre) VALUES (${item.categoria}) RETURNING id
-        `;
-        categoriaId = nuevaCat[0].id;
-      }
-
-      // Crear producto
-      await sql`
-        INSERT INTO productos (nombre, categoria_id, stock)
-        VALUES (${item.nombre}, ${categoriaId}, ${item.cantidad})
-      `;
+      categoriaId = nuevaCat[0].id;
     }
+
+    await sql`
+      INSERT INTO productos (nombre, categoria_id, stock)
+      VALUES (${item.nombre}, ${categoriaId}, ${item.cantidad})
+    `;
   }
 }
