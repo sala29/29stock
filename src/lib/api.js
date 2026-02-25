@@ -16,12 +16,15 @@ export async function getProductos() {
   return rows;
 }
 
-export async function actualizarStock(productoId, stockNuevo, stockAnterior) {
-  await sql`UPDATE productos SET stock = ${stockNuevo} WHERE id = ${productoId}`;
-  await sql`
-    INSERT INTO historial_stock (producto_id, stock_anterior, stock_nuevo)
-    VALUES (${productoId}, ${stockAnterior}, ${stockNuevo})
+export async function actualizarStock(productoId, stockNuevo) {
+  const result = await sql`
+    UPDATE productos 
+    SET stock = ${stockNuevo}
+    WHERE id = ${productoId}
+    RETURNING id, nombre, stock
   `;
+  console.log('UPDATE resultado:', result);
+  return result;
 }
 
 // Parsear el formato: 1/3|Nombre~categoria~cantidad|...
@@ -47,16 +50,14 @@ export function parsearQR(texto) {
 
 // Procesar todos los items acumulados de todos los QRs
 export async function procesarQR(itemsAcumulados, productosActuales) {
-  console.log('procesarQR llamado con:', itemsAcumulados.length, 'items');
   for (const item of itemsAcumulados) {
     const productoActual = productosActuales.find(
       p => p.nombre.toLowerCase().trim() === item.nombre.toLowerCase().trim()
     );
     if (productoActual) {
-      console.log(`Actualizando ${item.nombre}: ${productoActual.stock} → ${item.cantidad}`);
-      await actualizarStock(productoActual.id, item.cantidad, productoActual.stock);
+      await actualizarStock(productoActual.id, item.cantidad);
     } else {
-      console.warn(`Producto no encontrado en BD: "${item.nombre}"`);
+      console.warn(`No encontrado: "${item.nombre}"`);
     }
   }
 }
