@@ -10,10 +10,11 @@ export default function Dashboard() {
   const [orden, setOrden] = useState('nombre');
   const [showScanner, setShowScanner] = useState(false);
   const [itemsAcumulados, setItemsAcumulados] = useState([]);
-  const [progreso, setProgreso] = useState(null); // { actual, total }
+  const [progreso, setProgreso] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [confirmando, setConfirmando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     cargarDatos();
@@ -46,33 +47,44 @@ export default function Dashboard() {
     return lista;
   }
 
-  function handleScan(texto) {
+  // QRScanner llama aquí con el texto raw del QR
+  function handleScan(textoRaw) {
     try {
-      const { actual, total, items } = parsearQR(texto);
+      const { actual, total, items } = parsearQR(textoRaw);
 
       // Evitar escanear el mismo QR dos veces
-      if (progreso && actual <= progreso.actual) return;
+      if (progreso && actual <= progreso.escaneados) {
+        return;
+      }
 
       const nuevosItems = [...itemsAcumulados, ...items];
+      const escaneados = progreso ? progreso.escaneados + 1 : 1;
       setItemsAcumulados(nuevosItems);
-      setProgreso({ actual, total });
+      setProgreso({ actual, total, escaneados });
 
-      // Si ya tenemos todos los QRs, mostrar confirmación
       if (actual === total) {
+        // Tenemos todos, mostrar confirmación final
         setConfirmando(true);
       }
+      // Si no, el scanner sigue abierto esperando el siguiente QR
     } catch (e) {
-      setError('QR no válido');
+      setError('Error procesando QR');
     }
   }
 
   async function confirmarQR() {
     try {
+      setGuardando(true);
+      console.log('Guardando items:', itemsAcumulados);
+      console.log('Productos actuales:', productos);
       await procesarQR(itemsAcumulados, productos);
       resetScanner();
       await cargarDatos();
     } catch (e) {
-      setError('Error actualizando stock');
+      console.error(e);
+      setError('Error actualizando stock: ' + e.message);
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -84,7 +96,6 @@ export default function Dashboard() {
   }
 
   if (loading) return <div className="loading">Cargando...</div>;
-  if (error) return <div className="error">{error} <button onClick={() => setError(null)}>Cerrar</button></div>;
 
   return (
     <div className="dashboard">
@@ -95,6 +106,13 @@ export default function Dashboard() {
         </button>
       </header>
 
+      {error && (
+        <div className="error" style={{ marginBottom: '16px' }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ marginLeft: '12px' }}>✕</button>
+        </div>
+      )}
+
       <div className="filtros">
         <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)}>
           <option value="todas">Todas las categorías</option>
@@ -102,7 +120,6 @@ export default function Dashboard() {
             <option key={c.id} value={c.id}>{c.nombre}</option>
           ))}
         </select>
-
         <select value={orden} onChange={e => setOrden(e.target.value)}>
           <option value="nombre">Nombre (A-Z)</option>
           <option value="stock_desc">Mayor disponibilidad</option>
@@ -119,25 +136,39 @@ export default function Dashboard() {
       {showScanner && (
         <div className="modal-overlay">
           <div className="modal">
-            {!confirmando ? (
+
+            {/* Progreso de QRs múltiples */}
+            {progreso && !confirmando && (
+              <div className="progreso">
+                ✅ Escaneado {progreso.actual} de {progreso.total} — escanea el {progreso.actual + 1}/{progreso.total}
+              </div>
+            )}
+
+            {/* Scanner activo */}
+            {!confirmando && (
               <>
-                <h2>Escanear QR</h2>
-                {progreso && (
-                  <div className="progreso">
-                    ✅ Escaneado {progreso.actual} de {progreso.total}
-                    — faltan {progreso.total - progreso.actual} QR{progreso.total - progreso.actual !== 1 ? 's' : ''}
-                  </div>
-                )}
-                <QRScanner onScan={handleScan} key={progreso?.actual ?? 0} />
+                <h2>
+                  {!progreso
+                    ? 'Escanear QR'
+                    : `Escanear QR ${progreso.actual + 1}/${progreso.total}`}
+                </h2>
+                <QRScanner
+                  onScan={handleScan}
+                  esperando={progreso ? progreso.actual + 1 : 1}
+                  key={progreso?.actual ?? 0}
+                />
                 <button className="btn-cancelar" onClick={resetScanner}>
                   Cancelar
                 </button>
               </>
-            ) : (
+            )}
+
+            {/* Confirmación final */}
+            {confirmando && (
               <>
                 <h2>Confirmar cambios</h2>
                 <p className="qr-resumen">
-                  {itemsAcumulados.length} productos de {progreso.total} QR{progreso.total !== 1 ? 's' : ''}
+                  {itemsAcumulados.length} productos · {progreso.total} QR{progreso.total !== 1 ? 's' : ''}
                 </p>
                 <div className="qr-preview">
                   {itemsAcumulados.map((item, i) => {
@@ -158,11 +189,16 @@ export default function Dashboard() {
                   })}
                 </div>
                 <div className="modal-botones">
-                  <button className="btn-confirmar" onClick={confirmarQR}>✅ Confirmar</button>
-                  <button className="btn-cancelar" onClick={resetScanner}>❌ Rechazar</button>
+                  <button className="btn-confirmar" onClick={confirmarQR} disabled={guardando}>
+                    {guardando ? '⏳ Guardando...' : '✅ Confirmar'}
+                  </button>
+                  <button className="btn-cancelar" onClick={resetScanner} disabled={guardando}>
+                    ❌ Rechazar
+                  </button>
                 </div>
               </>
             )}
+
           </div>
         </div>
       )}

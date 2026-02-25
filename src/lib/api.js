@@ -47,12 +47,16 @@ export function parsearQR(texto) {
 
 // Procesar todos los items acumulados de todos los QRs
 export async function procesarQR(itemsAcumulados, productosActuales) {
+  console.log('procesarQR llamado con:', itemsAcumulados.length, 'items');
   for (const item of itemsAcumulados) {
     const productoActual = productosActuales.find(
-      p => p.nombre.toLowerCase() === item.nombre.toLowerCase()
+      p => p.nombre.toLowerCase().trim() === item.nombre.toLowerCase().trim()
     );
     if (productoActual) {
+      console.log(`Actualizando ${item.nombre}: ${productoActual.stock} → ${item.cantidad}`);
       await actualizarStock(productoActual.id, item.cantidad, productoActual.stock);
+    } else {
+      console.warn(`Producto no encontrado en BD: "${item.nombre}"`);
     }
   }
 }
